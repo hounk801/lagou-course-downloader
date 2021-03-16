@@ -1,5 +1,6 @@
 package online.githuboy.lagou.course.support;
 
+import cn.hutool.core.io.file.FileWriter;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Getter;
@@ -27,13 +28,16 @@ import java.util.concurrent.TimeUnit;
 public class Downloader {
 
     private final static String COURSE_INFO_API = "https://gate.lagou.com/v1/neirong/kaiwu/getCourseLessons?courseId={0}";
+
+    private final static String LESSION_INFO_API = "https://gate.lagou.com/v1/neirong/kaiwu/getCourseLessonDetail?lessonId=";
+
     /**
-     * 拉钩视频课程地址
+     * 拉钩课程地址
      */
     @Getter
     private final String courseId;
     /**
-     * 视频保存路径
+     * 保存路径
      */
     @Getter
     private final String savePath;
@@ -43,10 +47,21 @@ public class Downloader {
     private final String courseUrl;
 
     private CountDownLatch latch;
+
     private final List<LessonInfo> lessonInfoList = new ArrayList<>();
+
+    private final List<LessonInfo> lessonTextList = new ArrayList<>();
+
+
     private volatile List<MediaLoader> mediaLoaders;
 
     private long start;
+
+    /**
+     * true video
+     * false text
+     */
+    private boolean videoOrText;
 
     public Downloader(String courseId, String savePath) {
         this.courseId = courseId;
@@ -54,11 +69,43 @@ public class Downloader {
         this.courseUrl = MessageFormat.format(COURSE_INFO_API, courseId);
     }
 
+    public Downloader(String courseId, String savePath, boolean videoOrText) {
+        this.courseId = courseId;
+        this.savePath = savePath;
+        this.courseUrl = MessageFormat.format(COURSE_INFO_API, courseId);
+        this.videoOrText = videoOrText;
+    }
+
     public void start() throws IOException, InterruptedException {
         start = System.currentTimeMillis();
         parseLessonInfo2();
-        parseVideoInfo();
-        downloadMedia();
+        if (this.videoOrText) {
+            parseVideoInfo();
+            downloadMedia();
+        }
+        if (!this.videoOrText) {
+            downloadText();
+        }
+    }
+
+    private void downloadText() {
+        lessonTextList.forEach(r -> {
+            String strContent = HttpUtils
+                    .get(LESSION_INFO_API + r.getLessonId(), CookieStore.getCookie())
+                    .header("x-l-req-header", " {deviceType:1}")
+                    .execute().body();
+
+            JSONObject jsonObject = JSONObject.parseObject(strContent);
+            if (jsonObject.getInteger("state") != 1) {
+                throw new RuntimeException("访问课程信息出错:" + strContent);
+            }
+            jsonObject = jsonObject.getJSONObject("content");
+            String textContent = jsonObject.getString("textContent");
+
+            FileWriter writer = FileWriter.create(new File(basePath, r.getLessonName() + ".html"));
+            writer.write(textContent);
+        });
+
 
     }
 
@@ -91,19 +138,27 @@ public class Downloader {
                 }
                 //insert your filter code,use for debug
                 String lessonId = lesson.getString("id");
-                String fileId = "";
-                String fileUrl = "";
-                String fileEdk = "";
-                JSONObject videoMediaDTO = lesson.getJSONObject("videoMediaDTO");
-                if (null != videoMediaDTO) {
-                    fileId = videoMediaDTO.getString("fileId");
-                    fileUrl = videoMediaDTO.getString("fileUrl");
-                    fileEdk = videoMediaDTO.getString("fileEdk");
+
+                if (this.videoOrText) {
+                    String fileId = "";
+                    String fileUrl = "";
+                    String fileEdk = "";
+                    JSONObject videoMediaDTO = lesson.getJSONObject("videoMediaDTO");
+                    if (null != videoMediaDTO) {
+                        fileId = videoMediaDTO.getString("fileId");
+                        fileUrl = videoMediaDTO.getString("fileUrl");
+                        fileEdk = videoMediaDTO.getString("fileEdk");
+                    }
+                    String appId = lesson.getString("appId");
+                    LessonInfo lessonInfo = LessonInfo.builder().lessonId(lessonId).lessonName(lessonName).fileId(fileId).appId(appId).fileEdk(fileEdk).fileUrl(fileUrl).build();
+                    lessonInfoList.add(lessonInfo);
+                    log.info("解析到课程信息：【{}】,appId:{},fileId:{}", lessonName, appId, fileId);
+                }else {
+                    LessonInfo lessonText = LessonInfo.builder().lessonId(lessonId).lessonName(lessonName).build();
+                    lessonTextList.add(lessonText);
+                    downloadText();
                 }
-                String appId = lesson.getString("appId");
-                LessonInfo lessonInfo = LessonInfo.builder().lessonId(lessonId).lessonName(lessonName).fileId(fileId).appId(appId).fileEdk(fileEdk).fileUrl(fileUrl).build();
-                lessonInfoList.add(lessonInfo);
-                log.info("解析到课程信息：【{}】,appId:{},fileId:{}", lessonName, appId, fileId);
+
             }
         }
         System.out.println(1);
