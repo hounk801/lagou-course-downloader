@@ -92,7 +92,7 @@ public class DownText {
                 //insert your filter code,use for debug
                 String lessonId = lesson.getString("id");
 
-                LessonInfo lessonText = LessonInfo.builder().lessonId(lessonId).lessonName(lessonName).courseName(courseName).build();
+                LessonInfo lessonText = LessonInfo.builder().lessonId(lessonId).lessonName(lessonName).build();
                 lessonTextList.add(lessonText);
             }
         }
@@ -111,11 +111,6 @@ public class DownText {
             }
             jsonObject = jsonObject.getJSONObject("content");
             String textContent = jsonObject.getString("textContent");
-
-            this.basePath = new File(savePath, this.courseId + "_" + r.getCourseName());
-            if (!basePath.exists()) {
-                basePath.mkdirs();
-            }
 
             FileWriter writer = FileWriter.create(new File(basePath, r.getLessonName() + ".html"));
             writer.write(textContent);
