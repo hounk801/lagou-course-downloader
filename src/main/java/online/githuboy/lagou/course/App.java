@@ -30,7 +30,7 @@ public class App {
         } catch (Exception e) {
             log.error("{}", e.getMessage());
         }
-        Downloader downloader = new Downloader(courseId, savePath);
+        Downloader downloader = new Downloader(courseId, savePath,false);
         Thread logThread = new Thread(() -> {
             while (true) {
                 log.info("Thread pool:{}", ExecutorService.getExecutor());
